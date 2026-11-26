@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SintetizaAI — Resumo Automático de Textos</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d5bbf'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' dominant-baseline='middle' fill='white' font-family='Arial,sans-serif' font-weight='700' font-size='28'%3ESA%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/estilos/principal.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="brand-group">
+        <div class="brand-mark" aria-hidden="true">SA</div>
+        <div class="brand-copy">
+          <h1 class="brand-title">SintetizaAI</h1>
+          <p class="brand-subtitle">Resumo automático de relatórios, e-mails e solicitações</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="status-pill" id="api-status-pill" title="Status da API FastAPI e do modelo Gemini">
+          <span class="status-dot" id="api-status-dot"></span>
+          <span id="api-status-text">Verificando API...</span>
+        </div>
+        <a class="header-link" href="/docs" target="_blank" rel="noopener noreferrer">
+          Docs da API
+        </a>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <section class="workspace-grid" aria-label="Área de trabalho de resumo">
+        <article class="panel-card input-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Texto de entrada</h2>
+              <p class="panel-description">
+                Cole um relatório, solicitação ou mensagem extensa para extrair os pontos essenciais.
+              </p>
+            </div>
+          </div>
+
+          <div class="samples-bar" aria-label="Exemplos prontos">
+            <span class="samples-label">Testar com exemplo:</span>
+            <div class="samples-buttons">
+              <button type="button" class="sample-btn" data-sample="relatorio">
+                Relatório Mensal
+              </button>
+              <button type="button" class="sample-btn" data-sample="solicitacao">
+                Solicitação de TI
+              </button>
+              <button type="button" class="sample-btn" data-sample="ata">
+                Ata de Reunião
+              </button>
+            </div>
+          </div>
+
+          <form id="summary-form" class="summary-form" novalidate>
+            <div class="form-field">
+              <div class="field-label-row">
+                <label class="field-label" for="input-text">Conteúdo para resumir</label>
+                <span class="char-counter" id="text-counter">0 palavras · 0 caracteres</span>
+              </div>
+              <textarea
+                id="input-text"
+                name="text"
+                class="text-input"
+                rows="11"
+                placeholder="Cole aqui o texto completo (mínimo de 30 caracteres)..."
+                required
+              ></textarea>
+            </div>
+
+            <div class="form-row-three">
+              <div class="form-field">
+                <label class="field-label" for="input-requester">Solicitante (opcional)</label>
+                <input
+                  id="input-requester"
+                  name="requester"
+                  type="text"
+                  class="text-control"
+                  placeholder="Ex.: Equipe de Operações"
+                  maxlength="120"
+                >
+              </div>
+
+              <div class="form-field">
+                <label class="field-label" for="input-source">Origem</label>
+                <select id="input-source" name="source" class="select-control">
+                  <option value="interface_web">Interface Web</option>
+                  <option value="email">E-mail</option>
+                  <option value="relatorio">Relatório Interno</option>
+                  <option value="solicitacao">Chamado / Solicitação</option>
+                  <option value="slack">Chat / Slack</option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label class="field-label" for="input-detail">Profundidade</label>
+                <select id="input-detail" name="detail_level" class="select-control">
+                  <option value="curto">Curto</option>
+                  <option value="medio" selected>Médio</option>
+                  <option value="detalhado">Detalhado</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="checkbox-row" for="input-dispatch-n8n">
+              <input id="input-dispatch-n8n" name="dispatch_to_n8n" type="checkbox">
+              <span>Processar pelo fluxo do n8n (Webhook → FastAPI → Triagem)</span>
+            </label>
+
+            <div id="form-feedback" class="feedback-banner hidden" role="alert"></div>
+
+            <div class="form-actions">
+              <button type="button" id="clear-btn" class="secondary-btn">
+                Limpar
+              </button>
+              <button type="submit" id="submit-btn" class="primary-btn">
+                <span class="btn-spinner hidden" id="submit-spinner" aria-hidden="true"></span>
+                <span id="submit-label">Gerar resumo</span>
+              </button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel-card result-panel" aria-live="polite">
+          <div class="panel-header result-header">
+            <div>
+              <h2 class="panel-title">Resultado estruturado</h2>
+              <p class="panel-description">
+                Síntese retornada pela IA em formato padronizado.
+              </p>
+            </div>
+
+            <div class="view-tabs" id="view-tabs">
+              <button type="button" class="tab-btn active" data-view="formatted">
+                Visualização
+              </button>
+              <button type="button" class="tab-btn" data-view="json">
+                JSON
+              </button>
+            </div>
+          </div>
+
+          <div id="empty-result-state" class="empty-state">
+            <div class="empty-icon" aria-hidden="true">≡</div>
+            <h3>Nenhum resumo gerado ainda</h3>
+            <p>
+              Escolha um dos exemplos ao lado ou cole um texto real para visualizar
+              o resumo executivo, os pontos-chave, as ações identificadas e o JSON gerado.
+            </p>
+          </div>
+
+          <div id="result-content" class="result-content hidden">
+            <div id="formatted-view" class="formatted-view">
+              <div class="result-meta-header">
+                <h3 id="res-title" class="result-headline"></h3>
+                <div class="badges-row">
+                  <span id="res-category" class="meta-badge badge-category"></span>
+                  <span id="res-urgency" class="meta-badge badge-urgency"></span>
+                  <span id="res-routing" class="meta-badge badge-routing"></span>
+                </div>
+              </div>
+
+              <div class="metrics-strip">
+                <div class="metric-box">
+                  <span class="metric-label">Original</span>
+                  <strong id="metric-original" class="metric-value">0</strong>
+                </div>
+                <div class="metric-box">
+                  <span class="metric-label">Resumo</span>
+                  <strong id="metric-summary" class="metric-value">0</strong>
+                </div>
+                <div class="metric-box">
+                  <span class="metric-label">Redução</span>
+                  <strong id="metric-reduction" class="metric-value">0%</strong>
+                </div>
+                <div class="metric-box">
+                  <span class="metric-label">Tempo poupado</span>
+                  <strong id="metric-time" class="metric-value">0 min</strong>
+                </div>
+              </div>
+
+              <div id="n8n-status-box" class="automation-note hidden"></div>
+
+              <section class="result-block">
+                <h4 class="block-title">Resumo executivo</h4>
+                <p id="res-summary" class="executive-copy"></p>
+              </section>
+
+              <section class="result-block">
+                <h4 class="block-title">Principais pontos</h4>
+                <ul id="res-key-points" class="bullet-list"></ul>
+              </section>
+
+              <div class="two-col-blocks">
+                <section class="result-block">
+                  <h4 class="block-title">Ações identificadas</h4>
+                  <ul id="res-actions" class="action-list"></ul>
+                </section>
+
+                <section class="result-block">
+                  <h4 class="block-title">Entidades e prazos</h4>
+                  <div id="res-entities" class="chips-container"></div>
+                </section>
+              </div>
+            </div>
+
+            <div id="json-view" class="json-view hidden">
+              <pre id="res-json-output" class="json-code"></pre>
+            </div>
+
+            <div class="result-footer">
+              <span id="res-timestamp" class="footer-meta"></span>
+              <button type="button" id="copy-result-btn" class="secondary-btn small-btn">
+                Copiar resumo
+              </button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel-card history-section" aria-label="Histórico recente">
+        <div class="panel-header history-header">
+          <div>
+            <h2 class="panel-title">Histórico recente</h2>
+            <p class="panel-description">
+              Inclui análises enviadas pela interface web e também pelo fluxo do n8n.
+            </p>
+          </div>
+          <button type="button" id="refresh-history-btn" class="secondary-btn small-btn">
+            Atualizar lista
+          </button>
+        </div>
+
+        <div id="history-empty" class="history-empty">
+          Ainda não há resumos armazenados no histórico local.
+        </div>
+
+        <div id="history-list" class="history-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/scripts/exemplos.js"></script>
+  <script src="/scripts/aplicacao.js"></script>
+</body>
+</html>

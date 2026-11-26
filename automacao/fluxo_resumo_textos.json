@@ -1,0 +1,312 @@
+{
+  "name": "Resumo Automático de Textos — IA e Triagem",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resumir-texto",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Receber Texto (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "resumir-texto-webhook-01"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-text",
+              "name": "text",
+              "value": "={{ $json.body.texto || $json.body.text }}",
+              "type": "string"
+            },
+            {
+              "id": "field-requester",
+              "name": "requester",
+              "value": "={{ $json.body.solicitante || $json.body.requester || \"Equipe Operacional\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-source",
+              "name": "source",
+              "value": "={{ $json.body.origem || $json.body.source || \"n8n_webhook\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-detail",
+              "name": "detail_level",
+              "value": "={{ $json.body.nivel_detalhe || $json.body.detail_level || \"medio\" }}",
+              "type": "string"
+            },
+            {
+              "id": "field-received",
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Normalizar Campos (Edit Fields)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8000/api/v1/resumos",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, source: $json.source, detail_level: $json.detail_level, requester: $json.requester, dispatch_to_n8n: false }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Gerar Resumo via API FastAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-alta",
+              "leftValue": "={{ $json.analysis.urgency }}",
+              "rightValue": "alta",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-critica",
+              "leftValue": "={{ $json.analysis.urgency }}",
+              "rightValue": "critica",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Classificar Urgência (IF)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        980,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prio-fila",
+              "name": "fila_destino",
+              "value": "Atendimento Prioritário",
+              "type": "string"
+            },
+            {
+              "id": "prio-flag",
+              "name": "prioridade_flag",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "prio-msg",
+              "name": "mensagem_encaminhamento",
+              "value": "={{ \"[PRIORIDADE \" + $json.analysis.urgency.toUpperCase() + \"] \" + $json.analysis.title + \"\\nÁrea sugerida: \" + $json.analysis.routing_suggestion + \"\\n\\nResumo:\\n\" + $json.analysis.executive_summary + \"\\n\\nPrincipais pontos:\\n- \" + $json.analysis.key_points.join(\"\\n- \") }}",
+              "type": "string"
+            },
+            {
+              "id": "prio-raw",
+              "name": "resumo_completo",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Preparar Alerta Prioritário",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1260,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "std-fila",
+              "name": "fila_destino",
+              "value": "Fila Regular",
+              "type": "string"
+            },
+            {
+              "id": "std-flag",
+              "name": "prioridade_flag",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "std-msg",
+              "name": "mensagem_encaminhamento",
+              "value": "={{ \"[\" + $json.analysis.category.toUpperCase() + \"] \" + $json.analysis.title + \"\\nÁrea sugerida: \" + $json.analysis.routing_suggestion + \"\\n\\nResumo:\\n\" + $json.analysis.executive_summary + \"\\n\\nPrincipais pontos:\\n- \" + $json.analysis.key_points.join(\"\\n- \") }}",
+              "type": "string"
+            },
+            {
+              "id": "std-raw",
+              "name": "resumo_completo",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Preparar Resumo Padrão",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1260,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"processado\", fila_destino: $json.fila_destino, prioridade_flag: $json.prioridade_flag, mensagem_encaminhamento: $json.mensagem_encaminhamento, resumo_completo: $json.resumo_completo }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Responder Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receber Texto (Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Campos (Edit Fields)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Campos (Edit Fields)": {
+      "main": [
+        [
+          {
+            "node": "Gerar Resumo via API FastAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Resumo via API FastAPI": {
+      "main": [
+        [
+          {
+            "node": "Classificar Urgência (IF)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classificar Urgência (IF)": {
+      "main": [
+        [
+          {
+            "node": "Preparar Alerta Prioritário",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar Resumo Padrão",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Alerta Prioritário": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Resumo Padrão": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true
+  },
+  "tags": []
+}
